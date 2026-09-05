@@ -6,7 +6,7 @@ pipeline {
         IMAGE_NAME            = "${DOCKERHUB_CREDENTIALS_USR}/vehicle-service-portal"
         SSH_CREDENTIALS       = 'server-ssh-key'                     // Jenkins SSH credential ID
         SERVER_USER           = 'ubuntu'                             // change to your server's SSH user
-        SERVER_HOST           = '203.0.113.10'                       // change to your server's IP/domain
+        SERVER_HOST           = '13.232.141.59    '                       // change to your server's IP/domain
         DB_NAME               = 'vehicleportal'
         DB_USERNAME           = 'root'
         DB_CREDENTIALS        = credentials('db-password')           // Jenkins secret text credential ID
