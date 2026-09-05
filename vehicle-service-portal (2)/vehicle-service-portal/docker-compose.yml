@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: vehicleportal-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: vehicleportal
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - vehicleportal-net
+
+  app:
+    build: .
+    container_name: vehicleportal-app
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      SPRING_PROFILES_ACTIVE: mysql
+      DB_HOST: vehicleportal-mysql
+      DB_PORT: 3306
+      DB_NAME: vehicleportal
+      DB_USERNAME: root
+      DB_PASSWORD: root
+    ports:
+      - "8080:8080"
+    networks:
+      - vehicleportal-net
+
+networks:
+  vehicleportal-net:
+    driver: bridge
+
+volumes:
+  mysql_data:

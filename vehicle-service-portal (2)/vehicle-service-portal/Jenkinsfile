@@ -1,0 +1,115 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')       // Jenkins credential ID (username+password)
+        IMAGE_NAME            = "${DOCKERHUB_CREDENTIALS_USR}/vehicle-service-portal"
+        SSH_CREDENTIALS       = 'server-ssh-key'                     // Jenkins SSH credential ID
+        SERVER_USER           = 'ubuntu'                             // change to your server's SSH user
+        SERVER_HOST           = '203.0.113.10'                       // change to your server's IP/domain
+        DB_NAME               = 'vehicleportal'
+        DB_USERNAME           = 'root'
+        DB_CREDENTIALS        = credentials('db-password')           // Jenkins secret text credential ID
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timestamps()
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'mvn -B clean compile'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'mvn -B test'
+            }
+            post {
+                always {
+                    junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                sh 'mvn -B package -DskipTests'
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh "docker build -t ${IMAGE_NAME}:latest -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
+            }
+        }
+
+        stage('Docker Push') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh "echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin"
+                sh "docker push ${IMAGE_NAME}:latest"
+                sh "docker push ${IMAGE_NAME}:${BUILD_NUMBER}"
+            }
+        }
+
+        stage('Deploy') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sshagent(credentials: [SSH_CREDENTIALS]) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${SERVER_USER}@${SERVER_HOST} '
+                            docker network create vehicleportal-net || true
+
+                            docker run -d --name vehicleportal-mysql --network vehicleportal-net --restart unless-stopped \
+                                -e MYSQL_ROOT_PASSWORD=${DB_CREDENTIALS} \
+                                -e MYSQL_DATABASE=${DB_NAME} \
+                                -p 3306:3306 mysql:8.0 || true
+
+                            docker pull ${IMAGE_NAME}:latest
+
+                            docker stop vehicleportal-app || true
+                            docker rm vehicleportal-app || true
+
+                            docker run -d --name vehicleportal-app --network vehicleportal-net --restart unless-stopped \
+                                -p 8080:8080 \
+                                -e SPRING_PROFILES_ACTIVE=mysql \
+                                -e DB_HOST=vehicleportal-mysql \
+                                -e DB_PORT=3306 \
+                                -e DB_NAME=${DB_NAME} \
+                                -e DB_USERNAME=${DB_USERNAME} \
+                                -e DB_PASSWORD=${DB_CREDENTIALS} \
+                                ${IMAGE_NAME}:latest
+                        '
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Build #${BUILD_NUMBER} deployed successfully."
+        }
+        failure {
+            echo "Build #${BUILD_NUMBER} failed. Check the console log."
+        }
+        always {
+            sh "docker logout || true"
+        }
+    }
+}
