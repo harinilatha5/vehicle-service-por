@@ -60,7 +60,9 @@ pipeline {
 
         stage('Docker Push') {
             when {
-                branch 'main'
+                expression {
+                    return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
+                }
             }
             steps {
                 sh '''
@@ -73,7 +75,9 @@ pipeline {
 
         stage('Deploy') {
             when {
-                branch 'main'
+                expression {
+                    return env.GIT_BRANCH == 'origin/main' || env.GIT_BRANCH == 'main'
+                }
             }
             steps {
                 sshagent(credentials: [SSH_CREDENTIALS]) {
@@ -124,7 +128,7 @@ ENDSSH
 
     post {
         success {
-            echo "Build #${BUILD_NUMBER} deployed successfully."
+            echo "Build #${BUILD_NUMBER} pipeline completed successfully."
         }
         failure {
             echo "Build #${BUILD_NUMBER} failed. Check the console log."
